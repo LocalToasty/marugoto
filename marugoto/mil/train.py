@@ -211,7 +211,7 @@ def train_categorical(
     train_df = df[df.PATIENT.isin(train_patients)]
     valid_df = df[df.PATIENT.isin(valid_patients)]
 
-    target_enc = OneHotEncoder(sparse=False).fit(categories.reshape(-1, 1))
+    target_enc = OneHotEncoder(sparse_output=False).fit(categories.reshape(-1, 1))
 
     add_features = []
     if cat_labels:
