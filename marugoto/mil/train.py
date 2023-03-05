@@ -1,21 +1,89 @@
 #!/usr/bin/env python3
 
+import json
+import logging
 from argparse import ArgumentParser
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
-import json
+from typing import Any, Dict, Iterable, Optional, Union
 
 import pandas as pd
+import torch
+import torch.nn.functional as F
+from fastai.vision.all import Learner
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
-import torch
 from torch import nn
-import torch.nn.functional as F
 
 from marugoto.mil._mil import train
 from marugoto.mil.data import get_cohort_df
 from marugoto.mil.helpers import _make_cat_enc, _make_cont_enc
+
+__all__ = ["train_categorical"]
+
+
+def main() -> None:
+    parser = ArgumentParser("Train a categorical model on a cohort's tile's features.")
+    add_train_args(parser)
+    args = parser.parse_args()
+    print(args)
+
+    args.output_dir.mkdir(exist_ok=True, parents=True)
+    # just a big fat object to dump all kinds of info into for later reference
+    # not used during actual training
+    info = {
+        "description": "MIL training",
+        "clini": str(args.clini_table.absolute()),
+        "slide": str(args.slide_table.absolute()),
+        "feature_dir": str(args.feature_dir.absolute()),
+        "target_label": str(args.target_label),
+        "cat_labels": [str(c) for c in (args.cat_labels or [])],
+        "cont_labels": [str(c) for c in (args.cont_labels or [])],
+        "output_dir": str(args.output_dir.absolute()),
+        "datetime": datetime.now().astimezone().isoformat(),
+    }
+    model_path = args.output_dir / "export.pkl"
+    if model_path.exists():
+        print(f"{model_path} already exists. Skipping...")
+        exit(0)
+
+    train_result = train_categorical(
+        clini_table=args.clini_table,
+        slide_table=args.slide_table,
+        feature_dir=args.feature_dir,
+        target_label=args.target_label,
+        cat_labels=args.cat_labels,
+        cont_labels=args.cont_labels,
+        output_dir=args.output_dir,
+        info=info,
+    )
+
+    train_result.train_df.drop(columns="slide_path").to_csv(
+        args.output_dir / "train.csv", index=False
+    )
+    train_result.valid_df.drop(columns="slide_path").to_csv(
+        args.output_dir / "valid.csv", index=False
+    )
+
+    info["class distribution"]["training"] = {
+        k: int(v)
+        for k, v in train_result.train_df[args.target_label].value_counts().items()
+    }
+    info["class distribution"]["validation"] = {
+        k: int(v)
+        for k, v in train_result.valid_df[train_result.target_label]
+        .value_counts()
+        .items()
+    }
+
+    with open(args.output_dir / "info.json", "w") as f:
+        json.dump(info, f)
+
+    train_result.learn.export()
+    train_result.patient_preds_df.to_csv(
+        args.output_dir / "patient-preds-validset.csv", index=False
+    )
 
 
 def add_train_args(parser: ArgumentParser) -> ArgumentParser:
@@ -94,108 +162,85 @@ def add_train_args(parser: ArgumentParser) -> ArgumentParser:
     return parser
 
 
-if __name__ == "__main__":
-    parser = ArgumentParser("Train a categorical model on a cohort's tile's features.")
-    add_train_args(parser)
-    args = parser.parse_args()
-    print(args)
+@dataclass
+class TrainResult:
+    train_df: pd.DataFrame
+    valid_df: pd.DataFrame
+    learn: Learner
+    patient_preds_df: pd.DataFrame
 
-    args.output_dir.mkdir(exist_ok=True, parents=True)
 
-    # just a big fat object to dump all kinds of info into for later reference
-    # not used during actual training
-    info: Dict[str, Any] = {
-        "description": "MIL training",
-        "clini": str(args.clini_table.absolute()),
-        "slide": str(args.slide_table.absolute()),
-        "feature_dir": str(args.feature_dir.absolute()),
-        "target_label": str(args.target_label),
-        "cat_labels": [str(c) for c in (args.cat_labels or [])],
-        "cont_labels": [str(c) for c in (args.cont_labels or [])],
-        "output_dir": str(args.output_dir.absolute()),
-        "datetime": datetime.now().astimezone().isoformat(),
-    }
-
-    model_path = args.output_dir / "export.pkl"
-    if model_path.exists():
-        print(f"{model_path} already exists. Skipping...")
-        exit(0)
-
+def train_categorical(
+    *,
+    clini_table: pd.DataFrame,
+    slide_table: pd.DataFrame,
+    feature_dir: Path,
+    target_label: str,
+    cat_labels: Iterable[str],
+    cont_labels: Iterable[str],
+    output_dir: Optional[Path] = None,
+    info: Optional[Dict[str, Any]] = None,
+):
     df, categories = get_cohort_df(
-        clini_table=args.clini_table,
-        slide_table=args.slide_table,
-        feature_dir=args.feature_dir,
-        target_label=args.target_label,
-        categories=args.categories,
+        clini_table=clini_table,
+        slide_table=slide_table,
+        feature_dir=feature_dir,
+        target_label=target_label,
+        categories=categories,
     )
 
-    print("Overall distribution")
-    print(df[args.target_label].value_counts())
+    logging.info("Overall distribution")
+    logging.info(df[target_label].value_counts())
     assert not df[
-        args.target_label
+        target_label
     ].empty, "no input dataset. Do the tables / feature dir belong to the same cohorts?"
 
-    info["class distribution"] = {
-        "overall": {k: int(v) for k, v in df[args.target_label].value_counts().items()}
-    }
+    if info is not None:
+        info["class distribution"] = {
+            "overall": {k: int(v) for k, v in df[target_label].value_counts().items()}
+        }
 
     # Split off validation set
     train_patients, valid_patients = train_test_split(
-        df.PATIENT, stratify=df[args.target_label]
+        df.PATIENT, stratify=df[target_label]
     )
     train_df = df[df.PATIENT.isin(train_patients)]
     valid_df = df[df.PATIENT.isin(valid_patients)]
-    train_df.drop(columns="slide_path").to_csv(
-        args.output_dir / "train.csv", index=False
-    )
-    valid_df.drop(columns="slide_path").to_csv(
-        args.output_dir / "valid.csv", index=False
-    )
-
-    info["class distribution"]["training"] = {
-        k: int(v) for k, v in train_df[args.target_label].value_counts().items()
-    }
-    info["class distribution"]["validation"] = {
-        k: int(v) for k, v in valid_df[args.target_label].value_counts().items()
-    }
-
-    with open(args.output_dir / "info.json", "w") as f:
-        json.dump(info, f)
 
     target_enc = OneHotEncoder(sparse=False).fit(categories.reshape(-1, 1))
 
     add_features = []
-    if args.cat_labels:
+    if cat_labels:
         add_features.append(
-            (_make_cat_enc(train_df, args.cat_labels), df[args.cat_labels].values)
+            (_make_cat_enc(train_df, cat_labels), df[cat_labels].values)
         )
-    if args.cont_labels:
+    if cont_labels:
         add_features.append(
-            (_make_cont_enc(train_df, args.cont_labels), df[args.cont_labels].values)
+            (_make_cont_enc(train_df, cont_labels), df[cont_labels].values)
         )
 
     learn = train(
         bags=df.slide_path.values,
-        targets=(target_enc, df[args.target_label].values),
+        targets=(target_enc, df[target_label].values),
         add_features=add_features,
         valid_idxs=df.PATIENT.isin(valid_patients).values,
-        path=args.output_dir,
+        path=output_dir,
     )
 
     # save some additional information to the learner to make deployment easier
-    learn.target_label = args.target_label
-    learn.cat_labels, learn.cont_labels = args.cat_labels, args.cont_labels
-
-    learn.export()
+    learn.target_label = target_label
+    learn.cat_labels, learn.cont_labels = cat_labels, cont_labels
 
     patient_preds, patient_targs = learn.get_preds(act=nn.Softmax(dim=1))
 
+    # TODO: The entire following section overlaps with deployment.
+    # TODO: Deduplicate it.
     patient_preds_df = pd.DataFrame.from_dict(
         {
             "PATIENT": valid_df.PATIENT.values,
-            args.target_label: valid_df[args.target_label].values,
+            target_label: valid_df[target_label].values,
             **{
-                f"{args.target_label}_{cat}": patient_preds[:, i]
+                f"{target_label}_{cat}": patient_preds[:, i]
                 for i, cat in enumerate(categories)
             },
         }
@@ -203,10 +248,10 @@ if __name__ == "__main__":
 
     # calculate loss
     patient_preds = patient_preds_df[
-        [f"{args.target_label}_{cat}" for cat in categories]
+        [f"{target_label}_{cat}" for cat in categories]
     ].values
     patient_targs = target_enc.transform(
-        patient_preds_df[args.target_label].values.reshape(-1, 1)
+        patient_preds_df[target_label].values.reshape(-1, 1)
     )
     patient_preds_df["loss"] = F.cross_entropy(
         torch.tensor(patient_preds), torch.tensor(patient_targs), reduction="none"
@@ -218,11 +263,35 @@ if __name__ == "__main__":
     patient_preds_df = patient_preds_df[
         [
             "PATIENT",
-            args.target_label,
+            target_label,
             "pred",
-            *(f"{args.target_label}_{cat}" for cat in categories),
+            *(f"{target_label}_{cat}" for cat in categories),
             "loss",
         ]
     ]
     patient_preds_df = patient_preds_df.sort_values(by="loss")
-    patient_preds_df.to_csv(args.output_dir / "patient-preds-validset.csv", index=False)
+
+    return TrainResult(
+        train_df=train_df,
+        valid_df=valid_df,
+        learn=learn,
+        patient_preds_df=patient_preds_df,
+    )
+
+
+def read_table(path_or_df: Union[Path, pd.DataFrame], dtype=str):
+    if df := isinstance(path_or_df, pd.DataFrame):
+        return df
+    elif path := isinstance(path_or_df, Path):
+        if path.suffix(".xlsx"):
+            return pd.read_excel(path, dtype=dtype)
+        else:
+            return pd.read_csv(path, dtype=dtype)
+    else:
+        raise ValueError(
+            "path_or_df has to be either a Path or a Dataframe", f"{type(path_or_df)=}"
+        )
+
+
+if __name__ == "__main__":
+    main()

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Optional, Sequence, Tuple
+from typing import Any, Iterable, Optional, Sequence, Tuple, Union
 
 import h5py
 import numpy as np
@@ -168,18 +168,24 @@ def _attach_add_to_bag_and_zip_with_targ(bag, add, targ):
 
 
 def get_cohort_df(
-    clini_table: Path,
-    slide_table: Path,
+    clini_table: Union[Path, pd.DataFrame],
+    slide_table: Union[Path, pd.DataFrame],
     feature_dir: Path,
     target_label: str,
     categories: Optional[npt.NDArray[np.str_]],
 ) -> Tuple[pd.DataFrame, npt.NDArray[np.str_]]:
-    clini_df = (
-        pd.read_csv(clini_table, dtype=str)
-        if Path(clini_table).suffix == ".csv"
-        else pd.read_excel(clini_table, dtype=str)
-    )
-    slide_df = pd.read_csv(slide_table, dtype=str)
+    if isinstance(clini_table, pd.DataFrame):
+        clini_df = clini_table
+    else:
+        clini_df = (
+            pd.read_csv(clini_table, dtype=str)
+            if Path(clini_table).suffix == ".csv"
+            else pd.read_excel(clini_table, dtype=str)
+        )
+    if isinstance(slide_df, pd.DataFrame):
+        slide_df = slide_table
+    else:
+        slide_df = pd.read_csv(slide_table, dtype=str)
     df = clini_df.merge(slide_df, on="PATIENT")
     assert not df.empty, "no overlap between clini and slide table."
 

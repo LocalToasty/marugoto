@@ -3,7 +3,6 @@ from typing import Optional
 import torch
 from torch import nn
 
-
 __all__ = ["MILModel", "Attention"]
 
 

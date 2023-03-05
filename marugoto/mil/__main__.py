@@ -1,8 +1,9 @@
 from fire import Fire
+
 from .helpers import (
-    train_categorical_model_,
-    deploy_categorical_model_,
     categorical_crossval_,
+    deploy_categorical_model_,
+    train_categorical_model_,
 )
 
 if __name__ == "__main__":

@@ -1,24 +1,24 @@
-from datetime import datetime
 import json
+from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Union, Dict, Any
+from typing import Any, Dict, Iterable, Optional, Sequence, Union
 from warnings import warn
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import torch
+import torch.nn.functional as F
+from fastai.vision.learner import load_learner
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from fastai.vision.learner import load_learner
-import torch
 from torch import nn
-import torch.nn.functional as F
 
 from marugoto.data import SKLearnEncoder
 
-from ._mil import train, deploy
+from ._mil import deploy, train
 from .data import get_cohort_df, get_target_enc
 
 __all__ = [
