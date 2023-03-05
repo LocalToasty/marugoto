@@ -182,6 +182,7 @@ def train_categorical(
     cat_labels: Optional[Iterable[str]] = None,
     cont_labels: Optional[Iterable[str]] = None,
     output_dir: Optional[Path] = None,
+    n_epoch: int = 32,
     info: Optional[Dict[str, Any]] = None,
 ):
     df, categories = get_cohort_df(
@@ -228,6 +229,7 @@ def train_categorical(
         add_features=add_features,
         valid_idxs=df.PATIENT.isin(valid_patients).values,
         path=output_dir,
+        n_epoch=n_epoch,
     )
 
     # save some additional information to the learner to make deployment easier
