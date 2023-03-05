@@ -170,6 +170,7 @@ class TrainResult:
     valid_df: pd.DataFrame
     learn: Learner
     patient_preds_df: pd.DataFrame
+    info: Dict[str, Any]
 
 
 def train_categorical(
@@ -199,10 +200,10 @@ def train_categorical(
         target_label
     ].empty, "no input dataset. Do the tables / feature dir belong to the same cohorts?"
 
-    if info is not None:
-        info["class distribution"] = {
-            "overall": {k: int(v) for k, v in df[target_label].value_counts().items()}
-        }
+    info = info if info is not None else {}
+    info["class distribution"] = {
+        "overall": {k: int(v) for k, v in df[target_label].value_counts().items()}
+    }
 
     # Split off validation set
     train_patients, valid_patients = train_test_split(
@@ -281,6 +282,7 @@ def train_categorical(
         valid_df=valid_df,
         learn=learn,
         patient_preds_df=patient_preds_df,
+        info=info,
     )
 
 
