@@ -93,7 +93,7 @@ def deploy_categorical(
 
     target_label = target_label or learn.target_label
 
-    test_df = get_cohort_df(
+    test_df, _ = get_cohort_df(
         clini_table=clini_table,
         slide_table=slide_table,
         feature_dir=feature_dir,
