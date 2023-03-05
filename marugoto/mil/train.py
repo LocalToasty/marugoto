@@ -175,8 +175,8 @@ class TrainResult:
 
 def train_categorical(
     *,
-    clini_table: pd.DataFrame,
-    slide_table: pd.DataFrame,
+    clini_table: Union[Path, pd.DataFrame],
+    slide_table: Union[Path, pd.DataFrame],
     feature_dir: Path,
     target_label: str,
     categories: Optional[npt.NDArray[np.str_]] = None,
