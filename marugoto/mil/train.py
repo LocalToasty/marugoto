@@ -8,10 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Union
 
+import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from fastai.vision.all import Learner
+from fastai.vision.learner import Learner
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from torch import nn
@@ -176,8 +178,9 @@ def train_categorical(
     slide_table: pd.DataFrame,
     feature_dir: Path,
     target_label: str,
-    cat_labels: Iterable[str],
-    cont_labels: Iterable[str],
+    categories: Optional[npt.NDArray[np.str_]] = None,
+    cat_labels: Optional[Iterable[str]] = None,
+    cont_labels: Optional[Iterable[str]] = None,
     output_dir: Optional[Path] = None,
     info: Optional[Dict[str, Any]] = None,
 ):

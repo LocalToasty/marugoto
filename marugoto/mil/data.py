@@ -182,7 +182,7 @@ def get_cohort_df(
             if Path(clini_table).suffix == ".csv"
             else pd.read_excel(clini_table, dtype=str)
         )
-    if isinstance(slide_df, pd.DataFrame):
+    if isinstance(slide_table, pd.DataFrame):
         slide_df = slide_table
     else:
         slide_df = pd.read_csv(slide_table, dtype=str)
