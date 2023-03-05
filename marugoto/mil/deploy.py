@@ -86,7 +86,7 @@ def deploy_categorical(
     slide_table: Union[Path, pd.DataFrame],
     feature_dir: Path,
     target_label: str,
-):
+) -> pd.DataFrame:
     target_enc = get_target_enc(learn)
 
     categories = target_enc.categories_[0]

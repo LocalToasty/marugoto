@@ -20,6 +20,7 @@ from torch import nn
 
 from marugoto.mil._mil import train
 from marugoto.mil.data import get_cohort_df
+from marugoto.mil.deploy import deploy_categorical
 from marugoto.mil.helpers import _make_cat_enc, _make_cont_enc
 
 __all__ = ["train_categorical"]
@@ -237,45 +238,14 @@ def train_categorical(
     learn.target_label = target_label
     learn.cat_labels, learn.cont_labels = cat_labels, cont_labels
 
-    patient_preds, patient_targs = learn.get_preds(act=nn.Softmax(dim=1))
-
-    # TODO: The entire following section overlaps with deployment.
-    # TODO: Deduplicate it.
-    patient_preds_df = pd.DataFrame.from_dict(
-        {
-            "PATIENT": valid_df.PATIENT.values,
-            target_label: valid_df[target_label].values,
-            **{
-                f"{target_label}_{cat}": patient_preds[:, i]
-                for i, cat in enumerate(categories)
-            },
-        }
+    # deploy on validation set
+    patient_preds_df = deploy_categorical(
+        learn=learn,
+        clini_table=valid_df.drop(columns=["slide_path", "FILENAME"]),
+        slide_table=slide_table,
+        feature_dir=feature_dir,
+        target_label=target_label,
     )
-
-    # calculate loss
-    patient_preds = patient_preds_df[
-        [f"{target_label}_{cat}" for cat in categories]
-    ].values
-    patient_targs = target_enc.transform(
-        patient_preds_df[target_label].values.reshape(-1, 1)
-    )
-    patient_preds_df["loss"] = F.cross_entropy(
-        torch.tensor(patient_preds), torch.tensor(patient_targs), reduction="none"
-    )
-
-    patient_preds_df["pred"] = categories[patient_preds.argmax(1)]
-
-    # reorder dataframe and sort by loss (best predictions first)
-    patient_preds_df = patient_preds_df[
-        [
-            "PATIENT",
-            target_label,
-            "pred",
-            *(f"{target_label}_{cat}" for cat in categories),
-            "loss",
-        ]
-    ]
-    patient_preds_df = patient_preds_df.sort_values(by="loss")
 
     return TrainResult(
         train_df=train_df,
