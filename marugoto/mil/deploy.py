@@ -1,7 +1,9 @@
 from argparse import ArgumentParser
 from pathlib import Path
+from typing import Union
 
-from fastai.vision.learner import load_learner
+import pandas as pd
+from fastai.vision.learner import Learner, load_learner
 
 from marugoto.mil._mil import deploy
 from marugoto.mil.data import get_cohort_df, get_target_enc
@@ -57,7 +59,7 @@ def add_deploy_args(parser: ArgumentParser) -> ArgumentParser:
     return parser
 
 
-if __name__ == "__main__":
+def main():
     parser = ArgumentParser("Deploy a categorical model.")
     parser = add_deploy_args(parser)
     args = parser.parse_args()
@@ -67,19 +69,41 @@ if __name__ == "__main__":
         exit(0)
 
     learn = load_learner(args.model_path)
+    args.output_path.mkdir(parents=True, exist_ok=True)
+    patient_preds_df = deploy_categorical(
+        learn=learn,
+        clini_table=args.clini_table,
+        slide_table=args.slide_table,
+        feature_dir=args.feature_dir,
+        target_label=args.target_label,
+    )
+    patient_preds_df.to_csv(preds_csv, index=False)
+
+
+def deploy_categorical(
+    learn: Learner,
+    clini_table: Union[Path, pd.DataFrame],
+    slide_table: Union[Path, pd.DataFrame],
+    feature_dir: Path,
+    target_label: str,
+):
     target_enc = get_target_enc(learn)
 
     categories = target_enc.categories_[0]
 
-    target_label = args.target_label or learn.target_label
+    target_label = target_label or learn.target_label
 
     test_df = get_cohort_df(
-        clini_table=args.clini_table,
-        slide_table=args.slide_table,
-        feature_dir=args.feature_dir,
+        clini_table=clini_table,
+        slide_table=slide_table,
+        feature_dir=feature_dir,
         target_label=target_label,
         categories=categories,
     )
     patient_preds_df = deploy(test_df=test_df, learn=learn, target_label=target_label)
-    args.output_path.mkdir(parents=True, exist_ok=True)
-    patient_preds_df.to_csv(preds_csv, index=False)
+
+    return patient_preds_df
+
+
+if __name__ == "__main__":
+    main()
