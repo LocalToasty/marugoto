@@ -18,8 +18,9 @@ from torch import nn
 
 from marugoto.data import SKLearnEncoder
 
-from ._mil import deploy, train
+from ._mil import train
 from .data import get_cohort_df, get_target_enc
+from .deploy import deploy
 
 __all__ = [
     "train_categorical_model_",

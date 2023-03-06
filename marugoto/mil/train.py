@@ -11,16 +11,13 @@ from typing import Any, Dict, Iterable, Optional, Union
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import torch
-import torch.nn.functional as F
 from fastai.vision.learner import Learner
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
-from torch import nn
 
 from marugoto.mil._mil import train
 from marugoto.mil.data import get_cohort_df
-from marugoto.mil.deploy import deploy_categorical
+from marugoto.mil.deploy import deploy
 from marugoto.mil.helpers import _make_cat_enc, _make_cont_enc
 
 __all__ = ["train_categorical"]
@@ -239,11 +236,9 @@ def train_categorical(
     learn.cat_labels, learn.cont_labels = cat_labels, cont_labels
 
     # deploy on validation set
-    patient_preds_df = deploy_categorical(
+    patient_preds_df = deploy(
         learn=learn,
-        clini_table=valid_df.drop(columns=["slide_path", "FILENAME"]),
-        slide_table=slide_table,
-        feature_dir=feature_dir,
+        test_df=valid_df,
         target_label=target_label,
     )
 
