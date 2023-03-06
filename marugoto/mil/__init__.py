@@ -9,7 +9,6 @@ An implementation of
 """
 
 from . import data, helpers, model
-from ._mil import *
 
 __author__ = "Marko van Treeck"
 __copyright__ = "Copyright 2022, Kather Lab"

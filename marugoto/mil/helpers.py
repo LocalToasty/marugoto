@@ -10,17 +10,13 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 from fastai.vision.learner import load_learner
-from sklearn.impute import SimpleImputer
 from sklearn.model_selection import StratifiedKFold, train_test_split
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder
 from torch import nn
-
-from marugoto.data import SKLearnEncoder
 
 from .data import get_cohort_df, get_target_enc
 from .deploy import deploy
-from .train import train
+from .train import _make_cat_enc, _make_cont_enc, train
 
 __all__ = [
     "train_categorical_model_",
@@ -176,34 +172,6 @@ def train_categorical_model_(
     ]
     patient_preds_df = patient_preds_df.sort_values(by="loss")
     patient_preds_df.to_csv(output_path / "patient-preds-validset.csv", index=False)
-
-
-def _make_cat_enc(df: pd.DataFrame, cats: Iterable[str]) -> SKLearnEncoder:
-    # create a scaled one-hot encoder for the categorical values
-    #
-    # due to weirdeties in sklearn's OneHotEncoder.fit we fill NAs with other values
-    # randomly sampled with the same probability as their distribution in the
-    # dataset.  This is necessary for correctly determining StandardScaler's weigth
-    fitting_cats = []
-    for cat in cats:
-        weights = df[cat].value_counts(normalize=True)
-        non_na_samples = df[cat].fillna(
-            pd.Series(np.random.choice(weights.index, len(df), p=weights))
-        )
-        fitting_cats.append(non_na_samples)
-    cat_samples = np.stack(fitting_cats, axis=1)
-    cat_enc = make_pipeline(
-        OneHotEncoder(sparse=False, handle_unknown="ignore"),
-        StandardScaler(),
-    ).fit(cat_samples)
-    return cat_enc
-
-
-def _make_cont_enc(df, conts) -> SKLearnEncoder:
-    cont_enc = make_pipeline(StandardScaler(), SimpleImputer(fill_value=0)).fit(
-        df[conts].values
-    )
-    return cont_enc
 
 
 def deploy_categorical_model_(
