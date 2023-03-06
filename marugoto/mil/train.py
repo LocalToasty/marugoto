@@ -1,26 +1,39 @@
 #!/usr/bin/env python3
-
 import json
 import logging
+import os
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Union
+from typing import Any, Dict, Iterable, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import torch
+from fastai.vision.all import (
+    CSVLogger,
+    DataLoader,
+    DataLoaders,
+    Learner,
+    RocAuc,
+    SaveModelCallback,
+)
 from fastai.vision.learner import Learner
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
+from torch import nn
 
-from marugoto.mil._mil import train
+from marugoto.data import SKLearnEncoder
 from marugoto.mil.data import get_cohort_df
 from marugoto.mil.deploy import deploy
 from marugoto.mil.helpers import _make_cat_enc, _make_cont_enc
 
-__all__ = ["train_categorical"]
+from .data import make_dataset
+from .model import MILModel
+
+__all__ = ["train_from_clini_slide", "train"]
 
 
 def main() -> None:
@@ -48,7 +61,7 @@ def main() -> None:
         print(f"{model_path} already exists. Skipping...")
         exit(0)
 
-    train_result = train_categorical(
+    train_result = train_from_clini_slide(
         clini_table=args.clini_table,
         slide_table=args.slide_table,
         feature_dir=args.feature_dir,
@@ -171,7 +184,7 @@ class TrainResult:
     info: Dict[str, Any]
 
 
-def train_categorical(
+def train_from_clini_slide(
     *,
     clini_table: Union[Path, pd.DataFrame],
     slide_table: Union[Path, pd.DataFrame],
@@ -249,6 +262,72 @@ def train_categorical(
         patient_preds_df=patient_preds_df,
         info=info,
     )
+
+
+def train(
+    *,
+    bags: Sequence[Iterable[Path]],
+    targets: Tuple[SKLearnEncoder, npt.NDArray],
+    add_features: Iterable[Tuple[SKLearnEncoder, npt.NDArray]] = [],
+    valid_idxs: npt.NDArray[np.int_],
+    n_epoch: int = 32,
+    path: Optional[Path] = None,
+) -> Learner:
+    """Train a MLP on image features.
+
+    Args:
+        bags:  H5s containing bags of tiles.
+        targets:  An (encoder, targets) pair.
+        add_features:  An (encoder, targets) pair for each additional input.
+        valid_idxs:  Indices of the datasets to use for validation.
+    """
+    target_enc, targs = targets
+    train_ds = make_dataset(
+        bags=bags[~valid_idxs],  # type: ignore  # arrays cannot be used a slices yet
+        targets=(target_enc, targs[~valid_idxs]),
+        add_features=[(enc, vals[~valid_idxs]) for enc, vals in add_features],
+        bag_size=512,
+    )
+
+    valid_ds = make_dataset(
+        bags=bags[valid_idxs],  # type: ignore  # arrays cannot be used a slices yet
+        targets=(target_enc, targs[valid_idxs]),
+        add_features=[(enc, vals[valid_idxs]) for enc, vals in add_features],
+        bag_size=None,
+    )
+
+    # build dataloaders
+    train_dl = DataLoader(
+        train_ds, batch_size=64, shuffle=True, num_workers=1, drop_last=True
+    )
+    valid_dl = DataLoader(
+        valid_ds, batch_size=1, shuffle=False, num_workers=os.cpu_count()
+    )
+    batch = train_dl.one_batch()
+
+    model = MILModel(batch[0].shape[-1], batch[-1].shape[-1])
+
+    # weigh inversely to class occurances
+    counts = pd.value_counts(targs[~valid_idxs])
+    weight = counts.sum() / counts
+    weight /= weight.sum()
+    # reorder according to vocab
+    weight = torch.tensor(
+        list(map(weight.get, target_enc.categories_[0])), dtype=torch.float32
+    )
+    loss_func = nn.CrossEntropyLoss(weight=weight)
+
+    dls = DataLoaders(train_dl, valid_dl)
+    learn = Learner(dls, model, loss_func=loss_func, metrics=[RocAuc()], path=path)
+
+    cbs = [
+        SaveModelCallback(fname=f"best_valid"),
+        CSVLogger(),
+    ]
+
+    learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs)
+
+    return learn
 
 
 def read_table(path_or_df: Union[Path, pd.DataFrame], dtype=str):
