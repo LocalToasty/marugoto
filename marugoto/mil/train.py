@@ -22,7 +22,7 @@ from fastai.vision.all import (
 )
 from fastai.vision.learner import Learner
 from sklearn.impute import SimpleImputer
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedGroupKFold, train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from torch import nn
@@ -191,6 +191,7 @@ def train_from_clini_slide(
     feature_dir: Path,
     target_label: str,
     categories: Optional[npt.NDArray[np.str_]] = None,
+    group_by: Optional[str] = None,
     cat_labels: Optional[Iterable[str]] = None,
     cont_labels: Optional[Iterable[str]] = None,
     output_dir: Optional[Path] = None,
@@ -217,9 +218,18 @@ def train_from_clini_slide(
     }
 
     # Split off validation set
-    train_patients, valid_patients = train_test_split(
-        df.PATIENT, stratify=df[target_label]
-    )
+    if group_by:
+        train_idx, valid_idx = next(
+            StratifiedGroupKFold(n_splits=5).split(
+                df.PATIENT, df[target_label], groups=df[group_by]
+            )
+        )
+        train_patients, valid_patients = df.PATIENT[train_idx], df.PATIENT[valid_idx]
+    else:
+        train_patients, valid_patients = train_test_split(
+            df.PATIENT, stratify=df[target_label]
+        )
+
     train_df = df[df.PATIENT.isin(train_patients)]
     valid_df = df[df.PATIENT.isin(valid_patients)]
 
