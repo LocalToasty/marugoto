@@ -11,7 +11,7 @@ from torch import nn
 
 from .data import get_cohort_df, get_target_enc, make_dataset
 
-__all__ = ["deploy_clini_slide", "deploy"]
+__all__ = ["deploy_from_clini_slide", "deploy"]
 
 
 def add_deploy_args(parser: ArgumentParser) -> ArgumentParser:
@@ -75,7 +75,7 @@ def main():
 
     learn = load_learner(args.model_path)
     args.output_path.mkdir(parents=True, exist_ok=True)
-    patient_preds_df = deploy_categorical(
+    patient_preds_df = deploy_from_clini_slide(
         learn=learn,
         clini_table=args.clini_table,
         slide_table=args.slide_table,
@@ -85,7 +85,7 @@ def main():
     patient_preds_df.to_csv(preds_csv, index=False)
 
 
-def deploy_clini_slide(
+def deploy_from_clini_slide(
     learn: Learner,
     clini_table: Union[Path, pd.DataFrame],
     slide_table: Union[Path, pd.DataFrame],
