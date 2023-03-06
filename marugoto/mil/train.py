@@ -32,7 +32,7 @@ def main() -> None:
     args.output_dir.mkdir(exist_ok=True, parents=True)
     # just a big fat object to dump all kinds of info into for later reference
     # not used during actual training
-    info = {
+    info: Dict[str, Any] = {
         "description": "MIL training",
         "clini": str(args.clini_table.absolute()),
         "slide": str(args.slide_table.absolute()),
@@ -252,10 +252,10 @@ def train_categorical(
 
 
 def read_table(path_or_df: Union[Path, pd.DataFrame], dtype=str):
-    if df := isinstance(path_or_df, pd.DataFrame):
+    if isinstance((df := path_or_df), pd.DataFrame):
         return df
-    elif path := isinstance(path_or_df, Path):
-        if path.suffix(".xlsx"):
+    elif isinstance((path := path_or_df), Path):
+        if path.suffix == ".xlsx":
             return pd.read_excel(path, dtype=dtype)
         else:
             return pd.read_csv(path, dtype=dtype)
