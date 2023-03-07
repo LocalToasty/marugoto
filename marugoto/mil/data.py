@@ -191,7 +191,7 @@ def get_cohort_df(
 
     # infer categories if not given
     if categories is None:
-        categories = df.dropna(subset=target_label)[target_label].unique()
+        categories = df.dropna(subset=[target_label])[target_label].unique()
     assert len(categories) >= 2, f"fewer than two categories found: {categories=}"
 
     # remove uninteresting
