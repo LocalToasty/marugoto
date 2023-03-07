@@ -336,6 +336,7 @@ def train(
     ]
 
     learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs)
+    learn.metrics = []
 
     return learn
 
